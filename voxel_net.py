@@ -394,8 +394,8 @@ import pytorch_lightning as pl
 import torch.optim as optim
 import numpy as np
 
-class lightningBackbone(pl.LightningModule):
-    def __init__(self):
+class lightningVoxelNet(pl.LightningModule):
+    def __init__(self, save_dir):
         super().__init__()
         input_channels = 4
         grid_size = np.array([1540, 1540, 40])
@@ -406,6 +406,7 @@ class lightningBackbone(pl.LightningModule):
         num_anchors_per_location = 1
         num_dir_bins = 2
         
+        self.save_dir = save_dir
         self.backbone3d = VoxelBackBone(input_channels, grid_size)
         self.to_BEV = to_BEV
         self.backbone2d = BaseBEVBackbone(bev_input_channels)
@@ -425,8 +426,20 @@ class lightningBackbone(pl.LightningModule):
         self.logger.log_metrics(loss_dict)
         return loss
 
+    def training_epoch_end(self, epoch_results):
+        self.save_model()
+
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr = 1e-4, weight_decay = 0, eps = 1e-5)
         #scheduler = optim.lr_scheduler.CyclicLR(optimizer, 5e-4, 1e-2, base_momentum = 0.7, step_size_up=15, step_size_down = 30, cycle_momentum = False)
         return optimizer
+
+    def save_model(self):
+        now = datetime.now()
+        dt_string = now.strftime("%d.%H.%M")
+        fname = "model" + dt_string + '.pt'
+        save_path = self.save_dir + fname
+        print(f"Saving Model To: {save_path}")
+        torch.save(self.state_dict(), save_path)
+
 
