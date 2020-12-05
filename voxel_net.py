@@ -27,7 +27,7 @@ def createSparseConvBlock(in_channels, out_channels, kernel_size, indice_key=Non
 
     return m
 
-class VoxelBackBone(nn.Module):
+class VoxelBackBone(spconv.SparseModule):
     def __init__(self, input_channels, grid_size):
         super().__init__()
         self.sparse_shape = grid_size[::-1] + [1, 0, 0]
@@ -91,7 +91,6 @@ class VoxelBackBone(nn.Module):
             'multi_scale_3d_features': [x_conv1, x_conv2, x_conv3, x_conv4]
         }
 
-
 #--------------- 2D BACKBONE -----------------------------
 
 class ConvBlock(nn.Module):
@@ -105,17 +104,16 @@ class ConvBlock(nn.Module):
     def forward(self, x):
         return self.relu(self.bn(self.conv(x)))
 
-
 class TConvBlock(nn.Module):
 
-    def __init__(self, in_channels, channels, stride):
+    def __init__(self, in_channels, channels, stride, padding):
         super().__init__()
-        self.conv = nn.ConvTranspose2d(in_channels, channels, stride, stride = stride, bias=False)
+        self.conv = nn.ConvTranspose2d(in_channels, channels, stride, stride = stride, bias=False, padding = padding)
         self.bn = nn.BatchNorm2d(channels, eps=1e-3, momentum=0.01)
         self.relu = nn.ReLU()
 
-    def forward(self, x):
-        return self.relu(self.bn(self.conv(x)))
+    def forward(self, x, output_size = None):
+        return self.relu(self.bn(self.conv(x, output_size = output_size)))
 
 
 class BaseBEVBackbone(nn.Module):
@@ -136,16 +134,18 @@ class BaseBEVBackbone(nn.Module):
             c_in, layer_num, layer_stride, num_filter, num_upsample_filter, upsample_stride = c_in_list[idx], layer_nums[idx], layer_strides[idx], num_filters[idx], num_upsample_filters[idx], upsample_strides[idx]
             level_layers = [ConvBlock(c_in, num_filter, stride = layer_stride)] + [ConvBlock(num_filter, num_filter) for _ in range(layer_num)]
             self.blocks.append(nn.Sequential(*level_layers))
-            self.deblocks.append(TConvBlock(num_filter, num_upsample_filter, upsample_stride))
+            sparse_pad = 0 if layer_stride == 1 else 1
+            self.deblocks.append(TConvBlock(num_filter, num_upsample_filter, upsample_stride, sparse_pad))
+        self.num_upsample_filters = num_upsample_filters
 
     def forward(self, spatial_features):
         ups = []
         x = spatial_features
+        size = x.shape
         for i in range(len(self.blocks)):
             x = self.blocks[i](x)
-            ups.append(self.deblocks[i](x))
+            ups.append(self.deblocks[i](x, output_size = (size[0], self.num_upsample_filters[i], size[2], size[3])))
         return torch.cat(ups, dim=1)
-
 
 
 #-------------------- DENSE HEADS ------------------------------------
@@ -310,8 +310,6 @@ class WeightedCrossEntropyLoss(nn.Module):
         loss = F.cross_entropy(input, target, reduction='none') * weights
         return loss
 
-
-
 class RPNLoss():
 
     def __init__(self, num_class, num_dir_bins):
@@ -390,8 +388,6 @@ class RPNLoss():
         boxes2 = torch.cat([boxes2[..., :dim], rad_tg_encoding, boxes2[..., dim + 1:]], dim=-1)
         return boxes1, boxes2
 
-
-
 #------------------------------ LIGHTENING MODULE ----------------------------------
 
 import pytorch_lightning as pl
@@ -399,31 +395,29 @@ import torch.optim as optim
 import numpy as np
 
 class lightningBackbone(pl.LightningModule):
-
     def __init__(self):
         super().__init__()
         input_channels = 4
         grid_size = np.array([1540, 1540, 40])
         box_size = 7
         bev_input_channels = 256
-        dense_head_input_channels = 256
+        dense_head_input_channels = 512
         num_class = 4
         num_anchors_per_location = 1
         num_dir_bins = 2
         
         self.backbone3d = VoxelBackBone(input_channels, grid_size)
         self.to_BEV = to_BEV
-        self.backbone2d = BaseBEVBackbone(input_channels)
+        self.backbone2d = BaseBEVBackbone(bev_input_channels)
         self.densehead = DenseHead(dense_head_input_channels, num_class, num_anchors_per_location, box_size)
         self.loss_module = RPNLoss(num_class, num_dir_bins)
 
     def forward(self, batch_dict):
         voxel_features = self.backbone3d(batch_dict)
-        return voxel_features
-        # bev_features = self.to_BEV(voxel_features)
-        # bev_features = self.backbone2d(bev_features)
-        # predictions = self.densehead(bev_features)
-        # return predictions
+        bev_features = self.to_BEV(voxel_features)
+        bev_features = self.backbone2d(bev_features)
+        predictions = self.densehead(bev_features)
+        return predictions
     
     def training_step(self, batch_dict):
         prediction = self(batch_dict)
@@ -435,6 +429,4 @@ class lightningBackbone(pl.LightningModule):
         optimizer = optim.Adam(self.parameters(), lr = 1e-4, weight_decay = 0, eps = 1e-5)
         #scheduler = optim.lr_scheduler.CyclicLR(optimizer, 5e-4, 1e-2, base_momentum = 0.7, step_size_up=15, step_size_down = 30, cycle_momentum = False)
         return optimizer
-
-
 
