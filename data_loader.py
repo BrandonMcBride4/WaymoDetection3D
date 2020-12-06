@@ -1,6 +1,7 @@
 import os
 import torch
 from torch.utils.data import Dataset, DataLoader
+import pytorch_lightning as pl
 
 def sort_files(s):
     split = s.rsplit('_')
@@ -67,3 +68,21 @@ class WaymoDataLoader():
                           shuffle=self.shuffle,
                           num_workers=self.num_workers,
                           collate_fn=self.collect_fn)
+
+class WaymoDataModule(pl.LightningDataModule):
+	def __init__(self, train_path, test_path, train_batch_size, test_batch_size=1, num_workers = 1, shuffle_train = True, shuffle_test = False):
+		super().__init__()
+		self.train_batch_size = train_batch_size
+		self.test_batch_size = test_batch_Size
+		self.num_workers = num_workers
+		self.train_dataset = WaymoDataset(train_path)
+		self.test_dataset = WaymoDataset(test_path)
+		self.shuffle_train = shuffle_train
+		self.shuffle_test = shuffle_test
+		
+
+	def train_dataloader(self):
+		return WaymoDataLoader(self.train_dataset, self.train_batch_size, self.shuffle_train, self.num_workers).loader()
+
+	def val_dataloader(self):
+		return WaymoDataLoader(self.test_dataset, self.test_batch_size, self.shuffle_test, self.num_workers).loader()
