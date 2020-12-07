@@ -324,9 +324,9 @@ class RPNLoss():
         self.cls_loss = SigmoidFocalClassificationLoss()
 
     def compute_loss(self, predictions, ground_truth):
-        cls_loss = self.compute_cls_loss(predictions['cls_preds'], ground_truth['cls_labels'])
+        cls_loss = self.compute_cls_loss(predictions['cls_preds'], ground_truth['gt_class'])
         box_loss, dir_loss = self.compute_box_dir_loss(predictions['box_preds'], predictions['box_dir_cls_preds'],
-                                                       ground_truth['box_preds'], ground_truth['box_dir_cls_targets'])
+                                                       ground_truth['gt_reg'], ground_truth['gt_dir'])
         total_loss = cls_loss * self.lambda_cls + box_loss * self.lambda_box + dir_loss * self.lambda_dir
         loss_dict = {'cls_loss': cls_loss.item(), 'box_loss': box_loss.item(), 'dir_loss': dir_loss.item(), 'total_loss': total_loss.item()}
         return total_loss, loss_dict
@@ -420,9 +420,9 @@ class lightningVoxelNet(pl.LightningModule):
         predictions = self.densehead(bev_features)
         return predictions
     
-    def training_step(self, batch_dict):
+    def training_step(self, batch_dict, batch_idx):
         prediction = self(batch_dict)
-        loss, loss_dict = self.loss_module.compute_loss(prediction)
+        loss, loss_dict = self.loss_module.compute_loss(prediction, batch_dict)
         self.logger.log_metrics(loss_dict)
         return loss
 
