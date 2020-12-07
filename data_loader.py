@@ -73,7 +73,7 @@ class WaymoDataModule(pl.LightningDataModule):
 	def __init__(self, train_path, test_path, train_batch_size, test_batch_size=1, num_workers = 1, shuffle_train = True, shuffle_test = False):
 		super().__init__()
 		self.train_batch_size = train_batch_size
-		self.test_batch_size = test_batch_Size
+		self.test_batch_size = test_batch_size
 		self.num_workers = num_workers
 		self.train_dataset = WaymoDataset(train_path)
 		self.test_dataset = WaymoDataset(test_path)
