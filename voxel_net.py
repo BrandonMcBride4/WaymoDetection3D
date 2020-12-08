@@ -70,7 +70,7 @@ class VoxelBackBone(spconv.SparseModule):
         )
 
     def forward(self, batch_dict):
-        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        voxel_features, voxel_coords = batch_dict['voxel_features'].contiguous(), batch_dict['voxel_coords'].contiguous()
         batch_size = batch_dict['batch_size']
         input_sp_tensor = spconv.SparseConvTensor(
             features=voxel_features,
