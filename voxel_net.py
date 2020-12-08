@@ -251,10 +251,9 @@ class WeightedSmoothL1Loss(nn.Module):
 
     def __init__(self, beta: float = 1.0 / 9.0, code_weights: list = None):
         super(WeightedSmoothL1Loss, self).__init__()
-        self.beta = beta
         self.code_weights = np.array(code_weights, dtype=np.float32)
         self.code_weights = torch.from_numpy(self.code_weights).cuda()
-
+        self.beta = beta
     def smooth_l1_loss(self, diff, beta):
         n = torch.abs(diff)
         loss = torch.where(n < beta, 0.5 * n ** 2 / beta, n - 0.5 * beta)
@@ -275,9 +274,9 @@ class WeightedSmoothL1Loss(nn.Module):
         target = torch.where(torch.isnan(target), input, target)  # ignore nan targets
 
         diff = input - target
-        # code-wise weighting
-        if self.code_weights is not None:
-            diff = diff * self.code_weights.view(1, 1, -1)
+        # # code-wise weighting
+        # if self.code_weights is not None:
+        #     diff = diff * self.code_weights.view(1, 1, -1)
 
         loss = self.smooth_l1_loss(diff, self.beta)
 
@@ -320,13 +319,17 @@ class RPNLoss():
         self.lambda_dir = 0.2
         self.code_weights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
         self.dir_loss = WeightedCrossEntropyLoss()
-        self.reg_loss = WeightedSmoothL1Loss(self.code_weights)
+        self.reg_loss = WeightedSmoothL1Loss(code_weights = self.code_weights)
         self.cls_loss = SigmoidFocalClassificationLoss()
 
     def compute_loss(self, predictions, ground_truth):
-        cls_loss = self.compute_cls_loss(predictions['cls_preds'], ground_truth['gt_class'])
-        box_loss, dir_loss = self.compute_box_dir_loss(predictions['box_preds'], predictions['box_dir_cls_preds'],
-                                                       ground_truth['gt_reg'], ground_truth['gt_dir'])
+        batch_size = ground_truth['gt_class'].shape[0]
+        box_cls_gt =  ground_truth['gt_class'].permute(0,2,3,1).reshape(batch_size, -1, self.num_class).contiguous()
+        box_reg_gt = ground_truth['gt_reg'].permute(0,2,3,1).reshape(batch_size, -1, ground_truth['gt_reg'].shape[1]).contiguous()
+        box_dir_gt = ground_truth['gt_dir'].permute(0,2,3,1).reshape(batch_size, -1, ground_truth['gt_dir'].shape[1]).contiguous().float()
+        cls_loss = self.compute_cls_loss(predictions['cls_preds'],box_cls_gt)
+        box_loss, dir_loss = self.compute_box_dir_loss(predictions['box_preds'], predictions['dir_cls_preds'],
+                                                       box_reg_gt, box_dir_gt, box_cls_gt)
         total_loss = cls_loss * self.lambda_cls + box_loss * self.lambda_box + dir_loss * self.lambda_dir
         loss_dict = {'cls_loss': cls_loss.item(), 'box_loss': box_loss.item(), 'dir_loss': dir_loss.item(), 'total_loss': total_loss.item()}
         return total_loss, loss_dict
@@ -334,39 +337,26 @@ class RPNLoss():
     def compute_cls_loss(self, cls_preds, box_cls_labels):
 
         batch_size = int(cls_preds.shape[0])
-        mask = box_cls_labels >= 0  # [N, num_anchors]
-        positives = box_cls_labels > 0
-        negatives = box_cls_labels == 0
-        negative_cls_weights = negatives * 1.0
-        cls_weights = (negative_cls_weights + 1.0 * positives).float()
-        reg_weights = positives.float()
+        negatives = (box_cls_labels[:,:,0] != 0).float()  # [N, num_anchors]
+        positives = (box_cls_labels[:,:,0] == 0).float()
 
-        pos_normalizer = positives.sum(1, keepdim=True).float()
-        reg_weights /= torch.clamp(pos_normalizer, min=1.0)
-        cls_weights /= torch.clamp(pos_normalizer, min=1.0)
-        cls_targets = box_cls_labels * mask.type_as(box_cls_labels)
-        cls_targets = cls_targets.unsqueeze(dim=-1)
+        pos_normalizer = negatives.mean(1, keepdim=True).float()
+        neg_normalizer = 1 - pos_normalizer
+        cls_weights = positives * pos_normalizer + negatives * neg_normalizer
 
-        cls_targets = cls_targets.squeeze(dim=-1)
-        one_hot_targets = torch.zeros(
-            *list(cls_targets.shape), self.num_class + 1, dtype=cls_preds.dtype, device=cls_targets.device
-        )
-        one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
         cls_preds = cls_preds.view(batch_size, -1, self.num_class)
-        one_hot_targets = one_hot_targets[..., 1:]
-        cls_loss_src = self.cls_loss(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
+        cls_loss_src = self.cls_loss(cls_preds, box_cls_labels, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
         return cls_loss
 
-    def compute_box_dir_loss(self, box_preds, box_dir_cls_preds, box_reg_targets, box_dir_targets):
+    def compute_box_dir_loss(self, box_preds, box_dir_cls_preds, box_reg_targets, box_dir_targets, box_cls_labels):
 
         batch_size = int(box_preds.shape[0])
-        positives = box_cls_labels > 0
-        reg_weights = positives.float()
-        pos_normalizer = positives.sum(1, keepdim=True).float()
+        reg_weights = (box_cls_labels[:,:,0] == 0).float()
+        pos_normalizer = reg_weights.sum(1, keepdim=True).float()
         reg_weights /= torch.clamp(pos_normalizer, min=1.0)
 
-        box_preds = box_preds.view(batch_size, -1, box_preds.shape[-1] // self.num_anchors_per_location)
+        box_preds = box_preds.view(batch_size, -1, box_preds.shape[-1])# // self.num_anchors_per_location)
 
         # sin(a - b) = sinacosb-cosasinb
         box_preds_sin, reg_targets_sin = self.add_sin_difference(box_preds, box_reg_targets)
@@ -374,9 +364,7 @@ class RPNLoss():
         box_loss = loc_loss_src.sum() / batch_size
 
         dir_logits = box_dir_cls_preds.view(batch_size, -1, self.num_dir_bins)
-        weights = positives.type_as(dir_logits)
-        weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)
-        dir_loss = self.dir_loss(dir_logits, box_dir_targets, weights=weights)
+        dir_loss = self.dir_loss(dir_logits, box_dir_targets, weights=reg_weights)
         dir_loss = dir_loss.sum() / batch_size
 
         return box_loss, dir_loss
@@ -421,6 +409,7 @@ class lightningVoxelNet(pl.LightningModule):
         return predictions
     
     def training_step(self, batch_dict, batch_idx):
+        set_trace()
         prediction = self(batch_dict)
         loss, loss_dict = self.loss_module.compute_loss(prediction, batch_dict)
         self.logger.log_metrics(loss_dict)
