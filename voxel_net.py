@@ -252,7 +252,7 @@ class WeightedSmoothL1Loss(nn.Module):
     def __init__(self, beta: float = 1.0 / 9.0, code_weights: list = None):
         super(WeightedSmoothL1Loss, self).__init__()
         self.code_weights = np.array(code_weights, dtype=np.float32)
-        self.code_weights = torch.from_numpy(self.code_weights).cuda()
+        self.code_weights = torch.from_numpy(self.code_weights)#.cuda()
         self.beta = beta
     def smooth_l1_loss(self, diff, beta):
         n = torch.abs(diff)
@@ -409,7 +409,6 @@ class lightningVoxelNet(pl.LightningModule):
         return predictions
     
     def training_step(self, batch_dict, batch_idx):
-        set_trace()
         prediction = self(batch_dict)
         loss, loss_dict = self.loss_module.compute_loss(prediction, batch_dict)
         self.logger.log_metrics(loss_dict)
