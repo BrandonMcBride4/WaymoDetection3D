@@ -34,7 +34,7 @@ class VoxelBackBone(spconv.SparseModule):
         self.sparse_shape = grid_size[::-1] + [1, 0, 0]
 
         self.conv_input = spconv.SparseSequential(
-            spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
+            spconv.SparseConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
             nn.BatchNorm1d(16, eps=1e-3, momentum=0.01),
             nn.ReLU(),
         )
