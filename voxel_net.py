@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn 
 import torch.nn.functional as F
 import spconv
+from datetime import datetime
 
 def createSparseConvBlock(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=1,
                    conv_type='subm'):
@@ -33,7 +34,7 @@ class VoxelBackBone(spconv.SparseModule):
         self.sparse_shape = grid_size[::-1] + [1, 0, 0]
 
         self.conv_input = spconv.SparseSequential(
-            spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
+            spconv.SparseConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
             nn.BatchNorm1d(16, eps=1e-3, momentum=0.01),
             nn.ReLU(),
         )
@@ -252,7 +253,7 @@ class WeightedSmoothL1Loss(nn.Module):
     def __init__(self, beta: float = 1.0 / 9.0, code_weights: list = None):
         super(WeightedSmoothL1Loss, self).__init__()
         self.code_weights = np.array(code_weights, dtype=np.float32)
-        self.code_weights = torch.from_numpy(self.code_weights).cuda()
+        self.code_weights = torch.from_numpy(self.code_weights)#.cuda()
         self.beta = beta
     def smooth_l1_loss(self, diff, beta):
         n = torch.abs(diff)
@@ -409,7 +410,6 @@ class lightningVoxelNet(pl.LightningModule):
         return predictions
     
     def training_step(self, batch_dict, batch_idx):
-        set_trace()
         prediction = self(batch_dict)
         loss, loss_dict = self.loss_module.compute_loss(prediction, batch_dict)
         self.logger.log_metrics(loss_dict)
