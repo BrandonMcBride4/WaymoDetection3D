@@ -127,7 +127,7 @@ def create_BEV_vis(gt_reg, gt_dir, gt_class,ax,colors):
         temp = box[0].clone()
         box[0] = box[1]
         box[1] = temp
-        dir = -1 if torch.argmax(gt_dir[:,x,y].to(torch.int)) == 0 else i
+        dir = -1 if torch.argmax(gt_dir[:,x,y].to(torch.int)) == 0 else 1
 
         box[6] = box[6]*dir
         plot3d_box(box,ax,colors)
