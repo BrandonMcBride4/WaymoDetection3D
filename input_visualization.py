@@ -137,7 +137,7 @@ def create_BEV_vis(gt_reg, gt_dir, gt_class,ax,colors):
 #outward facing methods
 
 def visualize_batch_input(batch,colors={0:'r',1:'b',2:'g'}):
-  visualize_ground_truth(batch['gt_label'][0],batch['point_cloud'][0],batch['foreground'][0],batch['voxel_coords'][0],batch['gt_reg'][0],batch['gt_class'][0],batch['gt_dir'][0],colors)
+  visualize_ground_truth(batch['gt_label'],batch['point_cloud'],batch['foreground'],batch['voxel_coords'],batch['gt_reg'],batch['gt_class'],batch['gt_dir'],colors)
   plt.show()
 def visualize_network_output(gt_reg, gt_dir, gt_class,colors={0:'r',1:'b',2:'g'}):
 
