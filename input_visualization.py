@@ -115,22 +115,26 @@ def plot2d_box(box,ax,colors):
     ax.plot(np.array([plot_x[0,0],plot_x[1,0],plot_x[1,1],plot_x[0,1], plot_x[0,0]]) , np.array([plot_y[0,0],plot_y[1,0],plot_y[1,1],plot_y[0,1], plot_y[0,0]]),color=colors[box[7].to(torch.int).item()],linewidth=.5)
 
 
-def create_BEV_vis(gt_reg, gt_dir, gt_class,ax,colors):
-  for x in range(193):
-    for y in range(193):
-      max_class = torch.argmax(gt_class[x,y,:].to(torch.int))
-      if(max_class != 0):
-        box = gt_reg[x,y,:]     
- 
-        box = torch.cat([box, torch.tensor([max_class-1])])
-        box[:3] = box[:3] + (torch.tensor([x,y,0])+.5)* output_voxel_size + world_space_offset
-        temp = box[0].clone()
-        box[0] = box[1]
-        box[1] = temp
-        dir = -1 if torch.argmax(gt_dir[x,y,:].to(torch.int)) == 0 else 1
+def create_BEV_vis(gt_reg, gt_dir, gt_class,ax,colors, thresh = .5):
+  max_value, max_class = torch.max(gt_class, dim = 0 )
+  x,y = torch.meshgrid(torch.arange(193),torch.arange(193))
+  mask = (max_class > 0) & (max_value > thresh)
 
-        box[6] = box[6]*dir
-        plot3d_box(box,ax,colors)
+  x = x[mask]
+  y = y[mask]
+
+
+  box = gt_reg[:,mask]
+  box = torch.vstack([box,(max_class[mask]-1).unsqueeze(0)])
+  
+  box[:3] = box[:3] + (torch.vstack([x.unsqueeze(0),y.unsqueeze(0),torch.zeros(x.shape).unsqueeze(0)])+.5)*output_voxel_size + world_space_offset
+  box[[0,1],:] = box[[1,0],:]
+  box[6] = box[6] * (torch.argmax(gt_dir[:,mask].to(torch.int),dim=0)-0.5)*2
+
+  for b in box.T:
+    plot3d_box(b,ax,colors)
+
+
   
 
 
@@ -139,10 +143,10 @@ def create_BEV_vis(gt_reg, gt_dir, gt_class,ax,colors):
 def visualize_batch_input(batch, colors={0:'r',1:'b',2:'g'}, num = 0):
   visualize_ground_truth(batch['gt_label'][num],batch['point_cloud'][num],batch['foreground'][num],batch['voxel_coords'][batch['voxel_features'][:,0]==num],batch['gt_reg'][num],batch['gt_class'][num],batch['gt_dir'][num],colors)
   plt.show()
-def visualize_network_output(gt_reg, gt_dir, gt_class,colors={0:'r',1:'b',2:'g'}):
-
+def visualize_network_output(gt_reg, gt_dir, gt_class,colors={0:'r',1:'b',2:'g'},num = 0, thresh = .5):
+  
   ax = plt.subplot(111,projection='3d')
-  create_BEV_vis(gt_reg, gt_dir, gt_class,ax,colors)
+  create_BEV_vis(gt_reg[num].permute((2,0,1)), gt_dir[num].permute((2,0,1)), gt_class[num].permute((2,0,1)),ax,colors,thresh)
   ax.set_xlim(-60,60)
   ax.set_ylim(-60,60)
   ax.set_zlim(0,120)
@@ -154,5 +158,6 @@ def visualize_network_output(gt_reg, gt_dir, gt_class,colors={0:'r',1:'b',2:'g'}
   ax.figure.set_size_inches(10,10)
 
   plt.show()
+
 
 
