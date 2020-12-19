@@ -317,7 +317,7 @@ class RPNLoss():
         self.num_dir_bins = num_dir_bins
         self.lambda_cls = 1.0
         self.lambda_box = 2.0
-        self.lambda_dir = 0.2
+        self.lambda_dir = 1.0
         self.code_weights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
         self.dir_loss = WeightedCrossEntropyLoss()
         self.reg_loss = WeightedSmoothL1Loss(code_weights = self.code_weights)
