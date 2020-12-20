@@ -152,16 +152,16 @@ class BaseBEVBackbone(nn.Module):
 #-------------------- DENSE HEADS ------------------------------------
 
 class DenseHead(nn.Module):
-    def __init__(self, input_channels, num_class, num_anchors_per_location, box_size):
+    def __init__(self, input_channels, num_class, anchor_per_class, box_size):
         super().__init__()
- 
+        
         self.num_class = num_class
-        self.num_anchors_per_location = num_anchors_per_location
+        self.num_anchors_per_location = num_class-1 if anchor_per_class else 1
         self.box_size = box_size
         self.num_dir_bins = 2
 
         self.conv_cls = nn.Conv2d(
-            input_channels, self.num_anchors_per_location * self.num_class,
+            input_channels, self.num_class,
             kernel_size=1
         )
         self.conv_box = nn.Conv2d(
@@ -189,6 +189,10 @@ class DenseHead(nn.Module):
         cls_preds = cls_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
         box_preds = box_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
         dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
+
+        if not self.training:
+            box_preds = F.sigmoid(box_preds)
+            dir_cls_preds = F.sigmoid(dir_cls_preds)
 
         return {'cls_preds'     : cls_preds, 
                 'box_preds'     : box_preds, 
@@ -312,12 +316,13 @@ class WeightedCrossEntropyLoss(nn.Module):
 
 class RPNLoss():
 
-    def __init__(self, num_class, num_dir_bins):
+    def __init__(self, num_class, num_dir_bins, anchor_per_class=False):
         self.num_class = num_class
+        self.num_anchors_per_location = num_class-1 if anchor_per_class else 1
         self.num_dir_bins = num_dir_bins
         self.lambda_cls = 1.0
         self.lambda_box = 2.0
-        self.lambda_dir = 0.2
+        self.lambda_dir = 10.0
         self.code_weights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
         self.dir_loss = WeightedCrossEntropyLoss()
         self.reg_loss = WeightedSmoothL1Loss(code_weights = self.code_weights)
@@ -325,9 +330,14 @@ class RPNLoss():
 
     def compute_loss(self, predictions, ground_truth):
         batch_size = ground_truth['gt_class'].shape[0]
+
         box_cls_gt =  ground_truth['gt_class'].permute(0,2,3,1).reshape(batch_size, -1, self.num_class).contiguous()
         box_reg_gt = ground_truth['gt_reg'].permute(0,2,3,1).reshape(batch_size, -1, ground_truth['gt_reg'].shape[1]).contiguous()
         box_dir_gt = ground_truth['gt_dir'].permute(0,2,3,1).reshape(batch_size, -1, ground_truth['gt_dir'].shape[1]).contiguous().float()
+
+        #create new dir and box predictions based on gt class, strip away extra outputs
+        
+
         cls_loss = self.compute_cls_loss(predictions['cls_preds'],box_cls_gt)
         box_loss, dir_loss = self.compute_box_dir_loss(predictions['box_preds'], predictions['dir_cls_preds'],
                                                        box_reg_gt, box_dir_gt, box_cls_gt)
@@ -358,25 +368,49 @@ class RPNLoss():
         reg_weights /= torch.clamp(pos_normalizer, min=1.0)
 
         box_preds = box_preds.view(batch_size, -1, box_preds.shape[-1])# // self.num_anchors_per_location)
+        dir_logits = box_dir_cls_preds.view(batch_size, -1, self.num_dir_bins*self.num_anchors_per_location)
+
+
+        if(self.num_anchors_per_location>1):
+
+          max_class = torch.argmax(box_cls_labels,2)
+          max_class = torch.clamp(max_class-1,min=0)
+
+          ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],7))
+          dir_ind = torch.zeros((dir_logits.shape[0],dir_logits.shape[1],2))
+
+          ind[:,:] = torch.arange(7)
+          dir_ind[:,:] = torch.arange(2)
+
+          dir_ind[:,:] = max_class.unsqueeze(2)*2 +dir_ind
+          ind[:,:] = (max_class.unsqueeze(2))*7 +ind
+
+          dir_ind = dir_ind.to(torch.int64)
+          ind = ind.to(torch.int64)
+
+
+          box_preds = torch.gather(box_preds,2,ind)
+          dir_logits = torch.gather(dir_logits,2,dir_ind)
+
+
 
         # sin(a - b) = sinacosb-cosasinb
         box_preds_sin, reg_targets_sin = self.add_sin_difference(box_preds, box_reg_targets)
+        
         loc_loss_src = self.reg_loss(box_preds_sin, reg_targets_sin, weights=reg_weights)  # [N, M]
         box_loss = loc_loss_src.sum() / batch_size
 
-        dir_logits = box_dir_cls_preds.view(batch_size, -1, self.num_dir_bins)
         dir_loss = self.dir_loss(dir_logits, box_dir_targets, weights=reg_weights)
         dir_loss = dir_loss.sum() / batch_size
 
         return box_loss, dir_loss
 
-    def add_sin_difference(self, boxes1, boxes2, dim=6):
+    def add_sin_difference(self, boxes1, boxes2,dim=6):
         rad_pred_encoding = torch.sin(boxes1[..., dim:dim + 1]) * torch.cos(boxes2[..., dim:dim + 1])
         rad_tg_encoding = torch.cos(boxes1[..., dim:dim + 1]) * torch.sin(boxes2[..., dim:dim + 1])
         boxes1 = torch.cat([boxes1[..., :dim], rad_pred_encoding, boxes1[..., dim + 1:]], dim=-1)
         boxes2 = torch.cat([boxes2[..., :dim], rad_tg_encoding, boxes2[..., dim + 1:]], dim=-1)
         return boxes1, boxes2
-
 #------------------------------ LIGHTENING MODULE ----------------------------------
 
 import pytorch_lightning as pl
@@ -392,15 +426,15 @@ class lightningVoxelNet(pl.LightningModule):
         bev_input_channels = 256
         dense_head_input_channels = 512
         num_class = 4
-        num_anchors_per_location = 1
+        anchor_per_class = True
         num_dir_bins = 2
         
         self.save_dir = save_dir
         self.backbone3d = VoxelBackBone(input_channels, grid_size)
         self.to_BEV = to_BEV
         self.backbone2d = BaseBEVBackbone(bev_input_channels)
-        self.densehead = DenseHead(dense_head_input_channels, num_class, num_anchors_per_location, box_size)
-        self.loss_module = RPNLoss(num_class, num_dir_bins)
+        self.densehead = DenseHead(dense_head_input_channels, num_class, anchor_per_class, box_size)
+        self.loss_module = RPNLoss(num_class, num_dir_bins,anchor_per_class)
 
     def forward(self, batch_dict):
         voxel_features = self.backbone3d(batch_dict)
@@ -430,5 +464,6 @@ class lightningVoxelNet(pl.LightningModule):
         save_path = self.save_dir + fname
         print(f"Saving Model To: {save_path}")
         torch.save(self.state_dict(), save_path)
+
 
 
