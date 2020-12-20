@@ -190,6 +190,10 @@ class DenseHead(nn.Module):
         box_preds = box_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
         dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
 
+        if not self.training:
+            box_preds = F.sigmoid(box_preds)
+            dir_cls_preds = F.sigmoid(dir_cls_preds)
+
         return {'cls_preds'     : cls_preds, 
                 'box_preds'     : box_preds, 
                 'dir_cls_preds' : dir_cls_preds}
@@ -317,7 +321,7 @@ class RPNLoss():
         self.num_dir_bins = num_dir_bins
         self.lambda_cls = 1.0
         self.lambda_box = 2.0
-        self.lambda_dir = 1.0
+        self.lambda_dir = 10.0
         self.code_weights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
         self.dir_loss = WeightedCrossEntropyLoss()
         self.reg_loss = WeightedSmoothL1Loss(code_weights = self.code_weights)
