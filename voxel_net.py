@@ -193,6 +193,7 @@ class DenseHead(nn.Module):
         if not self.training:
             box_preds = F.sigmoid(box_preds)
             dir_cls_preds = F.sigmoid(dir_cls_preds)
+            
 
         return {'cls_preds'     : cls_preds, 
                 'box_preds'     : box_preds, 
@@ -418,7 +419,7 @@ import torch.optim as optim
 import numpy as np
 
 class lightningVoxelNet(pl.LightningModule):
-    def __init__(self, save_dir):
+    def __init__(self, save_dir, anchor_per_class = False):
         super().__init__()
         input_channels = 4
         grid_size = np.array([1540, 1540, 40])
@@ -426,7 +427,7 @@ class lightningVoxelNet(pl.LightningModule):
         bev_input_channels = 256
         dense_head_input_channels = 512
         num_class = 4
-        anchor_per_class = True
+        
         num_dir_bins = 2
         
         self.save_dir = save_dir
