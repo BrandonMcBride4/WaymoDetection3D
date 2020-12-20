@@ -67,7 +67,8 @@ class WaymoDataLoader():
                           batch_size=self.batch_size,
                           shuffle=self.shuffle,
                           num_workers=self.num_workers,
-                          collate_fn=self.collect_fn)
+                          collate_fn=self.collect_fn, 
+                          pin_memory=True)
 
 class WaymoDataModule(pl.LightningDataModule):
 	def __init__(self, train_path, test_path, train_batch_size, test_batch_size=1, num_workers = 1, shuffle_train = True, shuffle_test = False):
