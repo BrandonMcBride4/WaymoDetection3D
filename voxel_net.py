@@ -191,9 +191,28 @@ class DenseHead(nn.Module):
         dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
 
         if not self.training:
-            box_preds = F.sigmoid(box_preds)
-            dir_cls_preds = F.sigmoid(dir_cls_preds)
-            
+          cls_preds = F.sigmoid(cls_preds)
+          dir_cls_preds = F.sigmoid(dir_cls_preds)
+          if(self.num_anchors_per_location > 1):
+
+            max_class = torch.argmax(cls_preds,3)
+            max_class = torch.clamp(max_class-1,min=0)
+
+            ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],box_preds.shape[2],7))
+            dir_ind = torch.zeros((dir_cls_preds.shape[0],dir_cls_preds.shape[1],dir_cls_preds.shape[2],2))
+
+            ind[:,:,:] = torch.arange(7)
+            dir_ind[:,:,:] = torch.arange(2)
+
+            dir_ind[:,:] = max_class.unsqueeze(3)*2 +dir_ind
+            ind[:,:] = max_class.unsqueeze(3)*7 +ind
+
+            dir_ind = dir_ind.to(torch.int64)
+            ind = ind.to(torch.int64)
+
+
+            box_preds = torch.gather(box_preds,3,ind)
+            dir_cls_preds = torch.gather(dir_cls_preds,3,dir_ind)
 
         return {'cls_preds'     : cls_preds, 
                 'box_preds'     : box_preds, 
@@ -419,7 +438,7 @@ import torch.optim as optim
 import numpy as np
 
 class lightningVoxelNet(pl.LightningModule):
-    def __init__(self, save_dir, anchor_per_class = False):
+    def __init__(self, save_dir,anchor_per_class=False):
         super().__init__()
         input_channels = 4
         grid_size = np.array([1540, 1540, 40])
@@ -429,6 +448,10 @@ class lightningVoxelNet(pl.LightningModule):
         num_class = 4
         
         num_dir_bins = 2
+
+        normailzed_anchor_box_sizes = False
+        #car, pedestrian, cyclist anchor sizes
+        anchor_box_sizes = torch.tensor([[4.7, 2.1, 1.7],[0.91, 0.86, 1.73],[1.78, 0.84, 1.78]])
         
         self.save_dir = save_dir
         self.backbone3d = VoxelBackBone(input_channels, grid_size)
