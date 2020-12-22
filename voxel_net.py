@@ -198,8 +198,9 @@ class DenseHead(nn.Module):
             max_class = torch.argmax(cls_preds,3)
             max_class = torch.clamp(max_class-1,min=0)
 
-            ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],box_preds.shape[2],7))
-            dir_ind = torch.zeros((dir_cls_preds.shape[0],dir_cls_preds.shape[1],dir_cls_preds.shape[2],2))
+            dev = max_class.device
+            ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],box_preds.shape[2],7)).to(dev)
+            dir_ind = torch.zeros((dir_cls_preds.shape[0],dir_cls_preds.shape[1],dir_cls_preds.shape[2],2)).to(dev)
 
             ind[:,:,:] = torch.arange(7)
             dir_ind[:,:,:] = torch.arange(2)
@@ -488,6 +489,7 @@ class lightningVoxelNet(pl.LightningModule):
         save_path = self.save_dir + fname
         print(f"Saving Model To: {save_path}")
         torch.save(self.state_dict(), save_path)
+
 
 
 
