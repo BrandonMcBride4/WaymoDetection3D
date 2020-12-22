@@ -36,7 +36,6 @@ def get_boxes_global(cls, reg, dir, class_idx=-1, pred_thresh=0.5):
     :param pred_thresh: scalar
     :return: [N, 7] (x, y, z, dx, dy, dz, heading)
     """
-
     world_space_offset = torch.tensor([-75.2, -75.2, -2]).unsqueeze(1)
     output_voxel_size = torch.tensor([75.2 * 2 / 193, 75.2 * 2 / 193, 6]).unsqueeze(1)
 
@@ -59,6 +58,15 @@ def get_boxes_global(cls, reg, dir, class_idx=-1, pred_thresh=0.5):
 
 
 def nms(pred, pred_thresh=0.5, iou_thresh=0.5, num_class=4):
+    """
+
+    :param pred:
+    :param pred_thresh:
+    :param iou_thresh:
+    :param num_class:
+    :return: list of batch size of lists of number of classes of 3d world boxes (N, 7)(x, y, z, dx, dy, dz, yaw)
+    """
+
     batch_size = pred['box_preds'].shape[0]
     nms_list = []
     for i in range(batch_size):
@@ -75,7 +83,7 @@ def nms(pred, pred_thresh=0.5, iou_thresh=0.5, num_class=4):
                 boxes3d = get_boxes_global(cls, reg, dir, class_idx=c, pred_thresh=pred_thresh)
                 boxes = boxes3d_lidar_to_aligned_bev_boxes(boxes3d)
                 nms_idx = ops.nms(boxes=boxes, scores=scores, iou_threshold=iou_thresh)
-                nms_obj_idxs.append(mask_idx[nms_idx])
+                nms_obj_idxs.append(boxes3d[nms_idx])
             else:
                 nms_obj_idxs.append([])
         nms_list.append(nms_obj_idxs)
