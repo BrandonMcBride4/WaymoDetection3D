@@ -27,22 +27,58 @@ def boxes3d_lidar_to_aligned_bev_boxes(boxes3d):
     aligned_bev_boxes = torch.cat((boxes3d[:, 0:2] - choose_dims / 2, boxes3d[:, 0:2] + choose_dims / 2), dim=1)
     return aligned_bev_boxes
 
+def get_boxes_global(cls, reg, dir, class_idx=-1, pred_thresh=0.5):
+    """
 
-def nms(pred, iou_thresh=0.5, box_size=7, num_class=4):
+    :param cls: [4, 193, 193]
+    :param reg: [7, 193, 193]
+    :param dir: [2, 193, 193]
+    :param pred_thresh: scalar
+    :return: [N, 7] (x, y, z, dx, dy, dz, heading)
+    """
+
+    world_space_offset = torch.tensor([-75.2, -75.2, -2]).unsqueeze(1)
+    output_voxel_size = torch.tensor([75.2 * 2 / 193, 75.2 * 2 / 193, 6]).unsqueeze(1)
+
+    max_value, max_class = torch.max(cls, dim=0)
+    if class_idx == -1:
+        mask = (max_class > 0) & (max_value > pred_thresh)
+    else:
+        mask = (max_class == class_idx) & (max_value > pred_thresh)
+
+    x, y = torch.meshgrid(torch.arange(193), torch.arange(193))
+    x = x[mask]
+    y = y[mask]
+
+    box = reg[:, mask]
+
+    box[:3] = box[:3] + (torch.vstack([x.unsqueeze(0), y.unsqueeze(0), torch.zeros(x.shape).unsqueeze(0)]) + .5)\
+              * output_voxel_size + world_space_offset
+    box[6] = box[6] * (torch.argmax(dir[:, mask].to(torch.int), dim=0) - 0.5) * 2
+    return box.T
+
+
+def nms(pred, pred_thresh=0.5, iou_thresh=0.5, num_class=4):
     batch_size = pred['box_preds'].shape[0]
     nms_list = []
     for i in range(batch_size):
-        cls = pred['cls_preds'][i].view(-1, num_class)
-        cls_idx = torch.argmax(cls, dim=1)
+        cls = pred['cls_preds'][i].permute(2, 0, 1)
+        reg = pred['box_preds'][i].permute(2, 0, 1)
+        dir = pred['dir_cls_preds'][i].permute(2, 0, 1)
+        cls_value, max_class = torch.max(cls, dim=0)
         nms_obj_idxs = []
         for c in range(1, num_class):
-            obj_idx = (cls_idx == c).nonzero(as_tuple=False)
-            scores = cls[obj_idx[:, 0], c]
-            boxes3d = pred['box_preds'][i].view(-1, box_size)[obj_idx[:, 0]]
-            boxes = boxes3d_lidar_to_aligned_bev_boxes(boxes3d)
-            nms_idx = ops.nms(boxes=boxes, scores=scores, iou_threshold=iou_thresh)
-            nms_obj_idxs.append(obj_idx[nms_idx, 0])
-        nms_list.append(torch.cat(nms_obj_idxs))
+            mask = (max_class == c) & (cls_value > pred_thresh)
+            mask_idx = mask.nonzero(as_tuple=False)
+            if mask_idx.shape[0] > 0:
+                scores = cls[c, mask]
+                boxes3d = get_boxes_global(cls, reg, dir, class_idx=c, pred_thresh=pred_thresh)
+                boxes = boxes3d_lidar_to_aligned_bev_boxes(boxes3d)
+                nms_idx = ops.nms(boxes=boxes, scores=scores, iou_threshold=iou_thresh)
+                nms_obj_idxs.append(mask_idx[nms_idx])
+            else:
+                nms_obj_idxs.append([])
+        nms_list.append(nms_obj_idxs)
 
     return nms_list
 
