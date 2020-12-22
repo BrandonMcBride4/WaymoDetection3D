@@ -162,6 +162,23 @@ def visualize_network_output(batch, pred_reg, pred_dir, pred_class,colors={0:'r'
 
   plt.show()
 
+def plot_bbox_output(boxes, colors={0:'r',1:'b',2:'g'}, num = 0):
+  ax = plt.subplot(111,projection='3d')
+
+  for b in boxes[num]:
+    plot3d_box(b,ax,colors)
+  ax.set_xlim(-60,60)
+  ax.set_ylim(-60,60)
+  ax.set_zlim(0,120)
+
+  ax.set_xlabel('x axis')
+  ax.set_ylabel('y axis')
+
+  ax.set_title('BEV Output')
+  ax.figure.set_size_inches(10,10)
+
+  plt.show()
+
 
 
 
