@@ -198,8 +198,9 @@ class DenseHead(nn.Module):
             max_class = torch.argmax(cls_preds,3)
             max_class = torch.clamp(max_class-1,min=0)
 
-            ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],box_preds.shape[2],7))
-            dir_ind = torch.zeros((dir_cls_preds.shape[0],dir_cls_preds.shape[1],dir_cls_preds.shape[2],2))
+            dev = max_class.device
+            ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],box_preds.shape[2],7)).to(dev)
+            dir_ind = torch.zeros((dir_cls_preds.shape[0],dir_cls_preds.shape[1],dir_cls_preds.shape[2],2)).to(dev)
 
             ind[:,:,:] = torch.arange(7)
             dir_ind[:,:,:] = torch.arange(2)
@@ -396,11 +397,11 @@ class RPNLoss():
           max_class = torch.argmax(box_cls_labels,2)
           max_class = torch.clamp(max_class-1,min=0)
 
-          ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],7))
-          dir_ind = torch.zeros((dir_logits.shape[0],dir_logits.shape[1],2))
+          ind = torch.zeros((box_preds.shape[0],box_preds.shape[1],7), device = box_cls_labels.device)
+          dir_ind = torch.zeros((dir_logits.shape[0],dir_logits.shape[1],2), device = box_cls_labels.device)
 
-          ind[:,:] = torch.arange(7)
-          dir_ind[:,:] = torch.arange(2)
+          ind[:,:] = torch.arange(7, device = box_cls_labels.device)
+          dir_ind[:,:] = torch.arange(2, device = box_cls_labels.device)
 
           dir_ind[:,:] = max_class.unsqueeze(2)*2 +dir_ind
           ind[:,:] = (max_class.unsqueeze(2))*7 +ind
@@ -438,7 +439,7 @@ import torch.optim as optim
 import numpy as np
 
 class lightningVoxelNet(pl.LightningModule):
-    def __init__(self, save_dir,anchor_per_class=False):
+    def __init__(self, save_dir, anchor_per_class=False):
         super().__init__()
         input_channels = 4
         grid_size = np.array([1540, 1540, 40])
@@ -488,6 +489,7 @@ class lightningVoxelNet(pl.LightningModule):
         save_path = self.save_dir + fname
         print(f"Saving Model To: {save_path}")
         torch.save(self.state_dict(), save_path)
+
 
 
 
