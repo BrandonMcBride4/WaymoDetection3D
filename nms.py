@@ -88,7 +88,7 @@ def nms(pred, pred_thresh=0.5, iou_thresh=0.5, num_class=4):
 
                 nms_obj_idxs.append(nms_out)
             else:
-                nms_obj_idxs.append(torch.zeros((0, reg.shape[0]+1)))
+                nms_obj_idxs.append(torch.zeros((0, reg.shape[0]+2)))
         nms_list.append(torch.cat(nms_obj_idxs))
 
     return nms_list
