@@ -85,6 +85,7 @@ def nms(pred, pred_thresh=0.5, iou_thresh=0.5, num_class=4):
                 nms_idx = ops.nms(boxes=boxes, scores=scores, iou_threshold=iou_thresh)
                 nms_boxes = boxes3d[nms_idx]
                 nms_out = torch.hstack([nms_boxes, c*torch.ones((nms_boxes.shape[0], 1)), cls_value[nms_idx]])
+
                 nms_obj_idxs.append(nms_out)
             else:
                 nms_obj_idxs.append(torch.zeros((0, reg.shape[0]+1)))
