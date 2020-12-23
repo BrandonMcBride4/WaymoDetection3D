@@ -37,6 +37,7 @@ def visualize_ground_truth(ground_truth, point_cloud,foreground,voxels,gt_reg,gt
 
   ax2.scatter(point_cloud[:,0].numpy(), point_cloud[:,1].numpy(), point_cloud[:,2].numpy(),c=c,linewidths=.2)
 
+  print(voxels)
   voxels = voxels/100
   ax3.scatter(voxels[:,2].numpy(), voxels[:,1].numpy(), voxels[:,0].numpy(),linewidths=.2)
 
@@ -143,7 +144,7 @@ def create_BEV_vis(gt_reg, gt_dir, gt_class,ax,colors, thresh = .5):
 #outward facing methods
 
 def visualize_batch_input(batch, colors={0:'r',1:'b',2:'g'}, num = 0):
-  visualize_ground_truth(batch['gt_label'][num],batch['point_cloud'][num],batch['foreground'][num],batch['voxel_coords'][batch['voxel_features'][:,0]==num],batch['gt_reg'][num],batch['gt_class'][num],batch['gt_dir'][num],colors)
+  visualize_ground_truth(batch['gt_label'][num],batch['point_cloud'][num],batch['foreground'][num],batch['voxel_coords'][batch['voxel_coords'][:,0]==num][:,1:],batch['gt_reg'][num],batch['gt_class'][num],batch['gt_dir'][num],colors)
   plt.show()
 def visualize_network_output(batch, pred_reg, pred_dir, pred_class,colors={0:'r',1:'b',2:'g'},num = 0, thresh = .5):
   
@@ -178,6 +179,7 @@ def plot_bbox_output(boxes, colors={0:'r',1:'b',2:'g'}, num = 0):
   ax.figure.set_size_inches(10,10)
 
   plt.show()
+
 
 
 
