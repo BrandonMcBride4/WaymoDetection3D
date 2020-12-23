@@ -16,7 +16,10 @@ def pairwiseLabeledIOU(bboxes1, bboxes1_labels, bboxes2, bboxes2_labels):
     result = np.zeros((len(bboxes1), len(bboxes2)))
     for i, box1 in enumerate(bboxes1):
         for j, box2 in enumerate(bboxes2):
-            result[i][j] = int(bboxes1_labels[i] == bboxes2_labels[j]) * iou_3d(box1, box2)
+            try:
+                result[i][j] = int(bboxes1_labels[i] == bboxes2_labels[j]) * iou_3d(box1, box2)
+            except:
+                result[i][j] = 0
     return result
 
 def computeMatches(gt_boxes, gt_labels, pred_boxes, pred_labels, threshold = 0.5):
